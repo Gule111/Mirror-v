@@ -1,0 +1,16 @@
+spring:
+  application:
+    name: mirror-v-server
+  datasource:
+    url: jdbc:postgresql://postgres:5432/mirror_v
+    username: user
+    password: password
+  jpa:
+    hibernate:
+      ddl-auto: update
+    show-sql: true
+  kafka:
+    bootstrap-servers: kafka:9092
+
+server:
+  port: 8080
