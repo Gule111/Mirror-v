@@ -1,22 +1,20 @@
-import os
+import redis
 import time
-from confluent_kafka import Consumer, KafkaError
+from config import REDIS_URL
+from utils.logger import logger
 
 def main():
-    print("Mirror-V AI Worker starting...")
-    bootstrap_servers = os.getenv("KAFKA_BOOTSTRAP_SERVERS", "localhost:9092")
+    logger.info("Mirror-V AI Worker starting...")
+    # TODO: Implement Redis blpop listening and task scheduling
     
-    # Placeholder for Kafka consumer logic
-    conf = {
-        'bootstrap.servers': bootstrap_servers,
-        'group.id': 'mirror-v-ai-group',
-        'auto.offset.reset': 'earliest'
-    }
-    
-    # In a real scenario, we would initialize the consumer here
-    # For now, just a heartbeat
+    # r = redis.from_url(REDIS_URL)
+    # while True:
+    #     task = r.blpop("mirror_v_tasks", timeout=0)
+    #     if task:
+    #         process_task(task)
+
     while True:
-        print("AI Worker heartbeat...")
+        logger.info("AI Worker heartbeat...")
         time.sleep(30)
 
 if __name__ == "__main__":

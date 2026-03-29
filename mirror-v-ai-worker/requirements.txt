@@ -1,3 +1,6 @@
-confluent-kafka
-pydantic
+opencv-python
+openai-whisper
+psycopg2-binary
+redis
 python-dotenv
+pydantic
