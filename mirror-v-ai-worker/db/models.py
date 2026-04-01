@@ -232,6 +232,40 @@ def get_video_path(task_id: str) -> str | None:
             release_connection(conn)
 
 
+def save_video_transcript(task_id: str, content: str, duration: float) -> int:
+    """
+    保存 ASR (语音识别) 的原始台词结果。
+
+    Args:
+        task_id:  任务 UUID
+        content:  台词全量内容 (Text)
+        duration: 视频/音频时长
+
+    Returns:
+        int: 插入记录的行数 (1)
+    """
+    sql = """
+        INSERT INTO video_raw_transcripts (id, task_id, content, duration)
+        VALUES (%s, %s, %s, %s)
+    """
+    conn = None
+    try:
+        conn = get_connection()
+        with conn.cursor() as cur:
+            cur.execute(sql, (str(uuid.uuid4()), task_id, content, duration))
+        conn.commit()
+        logger.info("[DB] save_video_transcript — task_id=%s, content_len=%d", task_id, len(content))
+        return 1
+    except psycopg2.Error:
+        if conn:
+            conn.rollback()
+        logger.exception("[DB] save_video_transcript 失败 — task_id=%s", task_id)
+        raise
+    finally:
+        if conn:
+            release_connection(conn)
+
+
 def close_pool():
     """
     关闭数据库连接池（优雅停机时调用）。

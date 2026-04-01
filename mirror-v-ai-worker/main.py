@@ -21,9 +21,11 @@ from db.models import (
     update_task_status,
     get_video_path,
     save_video_assets,
+    save_video_transcript,
     close_pool,
 )
 from core.video_processor import extract_frames
+from core.audio_processor import transcribe_video
 
 # ═══════════════════════════════════════════════════════════════
 # 常量
@@ -62,9 +64,10 @@ def process_task(task_id: str):
     处理单个任务的完整链路：
         1. 标记 PROCESSING
         2. 查询视频路径
-        3. 抽帧 → 保存帧文件
-        4. 帧记录入库
-        5. 标记 SUCCESS
+        3. 语音转文字 (ASR) -> 入库
+        4. 抽帧 -> 保存帧文件
+        5. 帧记录入库
+        6. 标记 SUCCESS
     """
     logger.info("[TaskID: %s] ========== 开始处理任务 ==========", task_id)
     start_time = time.time()
@@ -74,7 +77,7 @@ def process_task(task_id: str):
         step_start = time.time()
         update_task_status(task_id, "PROCESSING")
         logger.info(
-            "[TaskID: %s] Step 1/4 — 状态更新为 PROCESSING (%.2fs)",
+            "[TaskID: %s] Step 1/5 — 状态更新为 PROCESSING (%.2fs)",
             task_id, time.time() - step_start,
         )
 
@@ -84,16 +87,29 @@ def process_task(task_id: str):
         if not video_url:
             raise ValueError(f"任务 {task_id} 的视频路径为空或任务不存在")
         logger.info(
-            "[TaskID: %s] Step 2/4 — 获取视频路径: %s (%.2fs)",
+            "[TaskID: %s] Step 2/5 — 获取视频路径: %s (%.2fs)",
             task_id, video_url, time.time() - step_start,
         )
 
-        # ── Step 3: OpenCV 抽帧 ──────────────────────────
+        # ── Step 3: ASR 语音转文字 ────────────────────────
+        step_start = time.time()
+        temp_audio_dir = os.path.join(STORAGE_DIR, "temp_audio")
+        asr_result = transcribe_video(video_url, temp_audio_dir)
+        
+        # 将台词保存到数据库
+        save_video_transcript(task_id, asr_result["text"], asr_result["duration"])
+        
+        logger.info(
+            "[TaskID: %s] Step 3/5 — ASR 完成，台词长度 %d (%.2fs)",
+            task_id, len(asr_result["text"]), time.time() - step_start,
+        )
+
+        # ── Step 4: OpenCV 抽帧 ──────────────────────────
         step_start = time.time()
         output_folder = os.path.join(STORAGE_DIR, "frames", task_id)
         frames = extract_frames(video_url, output_folder, interval=1)
         logger.info(
-            "[TaskID: %s] Step 3/4 — 抽帧完成，共 %d 帧 (%.2fs)",
+            "[TaskID: %s] Step 4/5 — 抽帧完成，共 %d 帧 (%.2fs)",
             task_id, len(frames), time.time() - step_start,
         )
 
@@ -101,7 +117,7 @@ def process_task(task_id: str):
         step_start = time.time()
         inserted = save_video_assets(task_id, frames)
         logger.info(
-            "[TaskID: %s] Step 4/4 — 帧记录入库，共插入 %d 条 (%.2fs)",
+            "[TaskID: %s] Step 5/5 — 帧记录入库，共插入 %d 条 (%.2fs)",
             task_id, inserted, time.time() - step_start,
         )
 
