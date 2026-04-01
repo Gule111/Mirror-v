@@ -88,7 +88,7 @@ def update_task_status(task_id: str, status: str) -> int:
         UPDATE tasks
         SET status     = %s,
             updated_at = CURRENT_TIMESTAMP
-        WHERE id = %s
+        WHERE id = %s AND is_deleted = FALSE
     """
     conn = None
     try:
@@ -177,7 +177,7 @@ def get_task_by_id(task_id: str) -> dict | None:
     Returns:
         dict | None: 任务记录字典，不存在则返回 None
     """
-    sql = "SELECT id, video_url, status, created_at, updated_at FROM tasks WHERE id = %s"
+    sql = "SELECT id, user_id, video_url, status, created_at, updated_at FROM tasks WHERE id = %s AND is_deleted = FALSE"
     conn = None
     try:
         conn = get_connection()
@@ -187,6 +187,8 @@ def get_task_by_id(task_id: str) -> dict | None:
         if row:
             # 将 UUID 转为字符串，方便 JSON 序列化
             row["id"] = str(row["id"])
+            if row.get("user_id"):
+                row["user_id"] = str(row["user_id"])
             logger.info("[DB] get_task_by_id — 找到任务: %s", task_id)
         else:
             logger.warning("[DB] get_task_by_id — 任务不存在: %s", task_id)
@@ -209,7 +211,7 @@ def get_video_path(task_id: str) -> str | None:
     Returns:
         str | None: video_url（视频路径），任务不存在则返回 None
     """
-    sql = "SELECT video_url FROM tasks WHERE id = %s"
+    sql = "SELECT video_url FROM tasks WHERE id = %s AND is_deleted = FALSE"
     conn = None
     try:
         conn = get_connection()

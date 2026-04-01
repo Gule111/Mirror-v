@@ -33,6 +33,12 @@ public class TaskEntity {
     private UUID userId;
 
     /**
+     * 逻辑删除标识，默认为 FALSE
+     */
+    @Column(name = "is_deleted", nullable = false)
+    private Boolean isDeleted = false;
+
+    /**
      * 视频 URL 地址，非空
      */
     @Column(name = "video_url", nullable = false)
@@ -44,11 +50,6 @@ public class TaskEntity {
     @Column(name = "status", nullable = false)
     private String status = "PENDING";
 
-    /**
-     * 任务分析报告（JSON 格式或文本，可选）
-     */
-    @Column(name = "report")
-    private String report;
 
     /**
      * 任务创建时间，由 JPA 自动审计记录

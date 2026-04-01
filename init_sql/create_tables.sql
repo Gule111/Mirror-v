@@ -1,6 +1,7 @@
 -- 1. 任务表 (增加逻辑删除字段 is_deleted)
 CREATE TABLE IF NOT EXISTS tasks (
     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    user_id UUID,                                   -- 所属用户 ID
     video_url TEXT NOT NULL,
     status VARCHAR(20) DEFAULT 'PENDING',
     is_deleted BOOLEAN DEFAULT FALSE,               -- 逻辑删除标识
