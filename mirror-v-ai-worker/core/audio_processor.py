@@ -21,9 +21,22 @@ _model_cache = None
 def _get_model():
     global _model_cache
     if _model_cache is None:
-        model_size = os.getenv("WHISPER_MODEL", "base")
-        logger.info("[AudioProcessor] 正在加载 Whisper 模型 (%s)...", model_size)
-        _model_cache = whisper.load_model(model_size)
+        # 1. 优先检查环境变量
+        model_path = os.getenv("WHISPER_MODEL_PATH")
+        
+        # 2. 如果没设置环境变量，尝试检查用户刚才找到的固定路径
+        if not model_path:
+            default_local_path = r"D:\workspace\Mirror-v\base\base.pt"
+            if os.path.exists(default_local_path):
+                model_path = default_local_path
+
+        if model_path and os.path.exists(model_path):
+            logger.info("[AudioProcessor] 正在从本地路径加载 Whisper 模型: %s", model_path)
+            _model_cache = whisper.load_model(model_path)
+        else:
+            model_size = os.getenv("WHISPER_MODEL", "base")
+            logger.info("[AudioProcessor] 正在加载 Whisper 模型 (%s)...", model_size)
+            _model_cache = whisper.load_model(model_size)
         logger.info("[AudioProcessor] 模型加载完毕")
     return _model_cache
 
