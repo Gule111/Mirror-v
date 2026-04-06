@@ -13,6 +13,7 @@ import os
 import subprocess
 import whisper
 from utils.logger import logger
+from config import WHISPER_MODEL, WHISPER_MODEL_PATH
 
 # 预加载模型（建议用 base 或 small，性能与效果的平衡点）
 # 首次运行会自动从网络下载，约 150MB~500MB
@@ -21,22 +22,12 @@ _model_cache = None
 def _get_model():
     global _model_cache
     if _model_cache is None:
-        # 1. 优先检查环境变量
-        model_path = os.getenv("WHISPER_MODEL_PATH")
-        
-        # 2. 如果没设置环境变量，尝试检查用户刚才找到的固定路径
-        if not model_path:
-            default_local_path = r"D:\workspace\Mirror-v\base\base.pt"
-            if os.path.exists(default_local_path):
-                model_path = default_local_path
-
-        if model_path and os.path.exists(model_path):
-            logger.info("[AudioProcessor] 正在从本地路径加载 Whisper 模型: %s", model_path)
-            _model_cache = whisper.load_model(model_path)
+        if WHISPER_MODEL_PATH and os.path.exists(WHISPER_MODEL_PATH):
+            logger.info("[AudioProcessor] 正在从本地路径加载 Whisper 模型: %s", WHISPER_MODEL_PATH)
+            _model_cache = whisper.load_model(WHISPER_MODEL_PATH)
         else:
-            model_size = os.getenv("WHISPER_MODEL", "base")
-            logger.info("[AudioProcessor] 正在加载 Whisper 模型 (%s)...", model_size)
-            _model_cache = whisper.load_model(model_size)
+            logger.info("[AudioProcessor] 正在加载 Whisper 模型 (%s)...", WHISPER_MODEL)
+            _model_cache = whisper.load_model(WHISPER_MODEL)
         logger.info("[AudioProcessor] 模型加载完毕")
     return _model_cache
 
@@ -71,9 +62,11 @@ def transcribe_video(video_path: str, temp_dir: str) -> dict:
     """
     核心流程：视频 -> 音频 -> 识别 -> 文本
     """
-    video_path = os.path.normpath(video_path)
-    if not os.path.exists(video_path):
-        raise FileNotFoundError(f"找不到视频文件: {video_path}")
+    is_network_url = video_path.startswith("http://") or video_path.startswith("https://")
+    if not is_network_url:
+        video_path = os.path.normpath(video_path)
+        if not os.path.exists(video_path):
+            raise FileNotFoundError(f"找不到视频文件: {video_path}")
 
     os.makedirs(temp_dir, exist_ok=True)
     base_name = os.path.basename(video_path).split('.')[0]
@@ -88,8 +81,8 @@ def transcribe_video(video_path: str, temp_dir: str) -> dict:
         model = _get_model()
         logger.info("[AudioProcessor] 正在进行语音转文字识别...")
         
-        # initial_prompt 可以帮助模型更好地理解专业用语或特定语言
-        result = model.transcribe(audio_path, language='zh') 
+        # initial_prompt 可以帮助模型更好地理解专业用语或特定语言，这里用简体中文句式强制约束模型输出简体
+        result = model.transcribe(audio_path, language='zh', initial_prompt='你好，以下是一段普通话。')  
         
         return {
             "text": result.get("text", "").strip(),

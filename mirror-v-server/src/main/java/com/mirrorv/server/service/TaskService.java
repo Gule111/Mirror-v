@@ -4,11 +4,20 @@ import com.mirrorv.server.dto.TaskRequest;
 import com.mirrorv.server.entity.TaskEntity;
 import com.mirrorv.server.exception.RedisQueueException;
 import com.mirrorv.server.repository.TaskRepository;
+import com.mirrorv.server.repository.AiAnalysisReportRepository;
+import com.mirrorv.server.repository.VideoRawTranscriptRepository;
+import com.mirrorv.server.repository.VideoAssetRepository;
+import com.mirrorv.server.entity.AiAnalysisReportEntity;
+import com.mirrorv.server.entity.VideoRawTranscriptEntity;
+import com.mirrorv.server.entity.VideoAssetEntity;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.data.redis.core.StringRedisTemplate;
 import org.springframework.stereotype.Service;
 
 import java.util.UUID;
+import java.util.Map;
+import java.util.HashMap;
+import java.util.List;
 
 /**
  * 任务服务层，承载核心业务逻辑
@@ -20,6 +29,9 @@ import java.util.UUID;
 public class TaskService {
 
     private final TaskRepository taskRepository;
+    private final AiAnalysisReportRepository analysisReportRepository;
+    private final VideoRawTranscriptRepository transcriptRepository;
+    private final VideoAssetRepository assetRepository;
     private final StringRedisTemplate redisTemplate;
 
     /**
@@ -30,8 +42,15 @@ public class TaskService {
     /**
      * 构造函数注入（Constructor Injection），符合 Spring 推荐实践
      */
-    public TaskService(TaskRepository taskRepository, StringRedisTemplate redisTemplate) {
+    public TaskService(TaskRepository taskRepository,
+                       AiAnalysisReportRepository analysisReportRepository,
+                       VideoRawTranscriptRepository transcriptRepository,
+                       VideoAssetRepository assetRepository,
+                       StringRedisTemplate redisTemplate) {
         this.taskRepository = taskRepository;
+        this.analysisReportRepository = analysisReportRepository;
+        this.transcriptRepository = transcriptRepository;
+        this.assetRepository = assetRepository;
         this.redisTemplate = redisTemplate;
     }
 
@@ -76,5 +95,45 @@ public class TaskService {
      */
     public TaskEntity getTaskById(UUID taskId) {
         return taskRepository.findById(taskId).orElse(null);
+    }
+
+    /**
+     * 获取任务及其完整的 AI 报告、台词和帧数据
+     *
+     * @param taskId 任务 UUID
+     * @return 包含聚合数据的 Map，供 Controller 直接返回给前端
+     */
+    public Map<String, Object> getTaskDetails(UUID taskId) {
+        TaskEntity task = getTaskById(taskId);
+        if (task == null) {
+            return null;
+        }
+
+        Map<String, Object> response = new HashMap<>();
+        response.put("taskId", task.getId().toString());
+        response.put("userId", task.getUserId().toString());
+        response.put("status", task.getStatus());
+        response.put("createdAt", task.getCreatedAt());
+
+        // 如果状态为 SUCCESS，拉取关联的详细报告数据
+        if ("SUCCESS".equals(task.getStatus())) {
+            // 1. 获取 AI 分析报告
+            analysisReportRepository.findByTaskId(taskId).ifPresent(report -> 
+                response.put("analysis", report.getAnalysisResult())
+            );
+
+            // 2. 获取原始台词本
+            transcriptRepository.findByTaskId(taskId).ifPresent(transcript -> 
+                response.put("transcript", transcript.getContent())
+            );
+
+            // 3. 获取抽帧序列
+            List<VideoAssetEntity> frames = assetRepository.findByTaskIdOrderByTimestampInVideoAsc(taskId);
+            if (!frames.isEmpty()) {
+                response.put("frames", frames);
+            }
+        }
+
+        return response;
     }
 }

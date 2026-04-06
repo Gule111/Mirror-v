@@ -15,27 +15,24 @@ import signal
 import time
 import redis
 
-from config import REDIS_URL
+from config import REDIS_URL, STORAGE_DIR, QUEUE_POLL_TIMEOUT
 from utils.logger import logger
 from db.models import (
     update_task_status,
     get_video_path,
     save_video_assets,
     save_video_transcript,
+    save_ai_analysis_report,
     close_pool,
 )
 from core.video_processor import extract_frames
 from core.audio_processor import transcribe_video
+from core.dify_client import analyze_video_content
 
 # ═══════════════════════════════════════════════════════════════
 # 常量
 # ═══════════════════════════════════════════════════════════════
 TASK_QUEUE_KEY = "mirror_v_task_queue"
-
-# 帧输出根目录（规范：使用 ../storage/ 作为相对路径根目录）
-STORAGE_DIR = os.path.normpath(
-    os.path.join(os.path.dirname(__file__), "..", "storage")
-)
 
 # ═══════════════════════════════════════════════════════════════
 # 优雅停机
@@ -100,24 +97,43 @@ def process_task(task_id: str):
         save_video_transcript(task_id, asr_result["text"], asr_result["duration"])
         
         logger.info(
-            "[TaskID: %s] Step 3/5 — ASR 完成，台词长度 %d (%.2fs)",
+            "[TaskID: %s] Step 3/6 — ASR 完成，台词长度 %d (%.2fs)",
             task_id, len(asr_result["text"]), time.time() - step_start,
         )
 
-        # ── Step 4: OpenCV 抽帧 ──────────────────────────
+        # ── Step 4: OpenCV 抽帧并直传 OSS ──────────────────────────
         step_start = time.time()
-        output_folder = os.path.join(STORAGE_DIR, "frames", task_id)
-        frames = extract_frames(video_url, output_folder, interval=1)
+        frames = extract_frames(video_url, task_id, interval=1)
         logger.info(
-            "[TaskID: %s] Step 4/5 — 抽帧完成，共 %d 帧 (%.2fs)",
+            "[TaskID: %s] Step 4/6 — 抽帧完成，共 %d 帧 (%.2fs)",
             task_id, len(frames), time.time() - step_start,
         )
 
-        # ── Step 4: 帧记录写入数据库 ─────────────────────
+        # ── Step 5: Dify AI 内容分析 (多模态) ──────────────────────
+        step_start = time.time()
+        # 提取用于 AI 分析的图片 URL 列表
+        frame_urls = [f["file_path"] for f in frames if f["file_path"].startswith("http")]
+        
+        analysis_result = analyze_video_content(
+            asr_result["text"], 
+            asr_result["duration"], 
+            frame_urls=frame_urls
+        )
+        
+        if analysis_result:
+            save_ai_analysis_report(task_id, analysis_result)
+            logger.info(
+                "[TaskID: %s] Step 5/6 — AI 多模态分析完成 (%.2fs)",
+                task_id, time.time() - step_start,
+            )
+        else:
+            logger.warning("[TaskID: %s] Step 5/6 — AI 分析失败或结果为空", task_id)
+
+        # ── Step 6: 帧记录写入数据库 ─────────────────────
         step_start = time.time()
         inserted = save_video_assets(task_id, frames)
         logger.info(
-            "[TaskID: %s] Step 5/5 — 帧记录入库，共插入 %d 条 (%.2fs)",
+            "[TaskID: %s] Step 6/6 — 帧记录入库，共插入 %d 条 (%.2fs)",
             task_id, inserted, time.time() - step_start,
         )
 
@@ -168,7 +184,7 @@ def main():
     try:
         while not _shutdown_flag:
             # blpop 带超时，便于周期性检查停机标志
-            result = r.blpop(TASK_QUEUE_KEY, timeout=5)
+            result = r.blpop(TASK_QUEUE_KEY, timeout=QUEUE_POLL_TIMEOUT)
 
             if result is None:
                 # 超时，无任务，继续循环（检查停机标志）

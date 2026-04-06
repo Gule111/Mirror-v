@@ -21,3 +21,9 @@ spring:
 
 server:
   port: 8080
+
+qiniu:
+  access-key: q7uzIBHVFLHJ693vAqcLPcAoWzrOsKwSruFhN-0M
+  secret-key: 5B7uKFXAzLVdpbPW_zd7f0MDHTIw0tvMHeElsIuD
+  bucket: mirror-v-test
+  domain: http://td1wc55y2.hn-bkt.clouddn.com

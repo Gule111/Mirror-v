@@ -4,12 +4,17 @@ import com.mirrorv.server.dto.TaskRequest;
 import com.mirrorv.server.entity.TaskEntity;
 import com.mirrorv.server.exception.RedisQueueException;
 import com.mirrorv.server.service.TaskService;
+import com.qiniu.storage.Configuration;
+import com.qiniu.storage.Region;
+import com.qiniu.storage.UploadManager;
+import com.qiniu.util.Auth;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.beans.factory.annotation.Value;
+import jakarta.annotation.PostConstruct;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
 import org.springframework.web.multipart.MultipartFile;
 
-import java.io.File;
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
@@ -17,6 +22,9 @@ import java.nio.file.Paths;
 import java.util.HashMap;
 import java.util.Map;
 import java.util.UUID;
+import org.springframework.core.io.Resource;
+import org.springframework.core.io.UrlResource;
+import org.springframework.http.MediaType;
 
 /**
  * 任务控制层 — 薄 Controller，仅负责参数校验、异常处理与响应封装
@@ -30,18 +38,33 @@ public class TaskController {
 
     private final TaskService taskService;
 
-    // Storage directory relative to project root or use an absolute path for safety
-    private static final String STORAGE_DIR = "D:/workspace/Mirror-v/Mirror-v0.1.0/storage";
+    @Value("${qiniu.access-key}")
+    private String accessKey;
+
+    @Value("${qiniu.secret-key}")
+    private String secretKey;
+
+    @Value("${qiniu.bucket}")
+    private String bucket;
+
+    @Value("${qiniu.domain}")
+    private String domain;
+
+    @Value("${app.storage.dir:./storage}")
+    private String storageDir;
 
     /**
      * 构造函数注入 TaskService
      */
     public TaskController(TaskService taskService) {
         this.taskService = taskService;
-        
+    }
+
+    @PostConstruct
+    public void init() {
         // Ensure storage directory exists
         try {
-            Files.createDirectories(Paths.get(STORAGE_DIR));
+            Files.createDirectories(Paths.get(storageDir));
         } catch (IOException e) {
             log.error("Failed to create storage directory", e);
         }
@@ -77,25 +100,36 @@ public class TaskController {
             if (dotIndex > 0) {
                 extension = originalFileName.substring(dotIndex);
             }
-            String newFileName = UUID.randomUUID().toString() + extension;
+            String newFileName = "video/" + UUID.randomUUID().toString() + extension;
             
-            // 拼接绝对路径
-            Path targetLocation = Paths.get(STORAGE_DIR, newFileName);
+            // 使用七牛云上传
+            Configuration cfg = new Configuration(Region.autoRegion());
+            UploadManager uploadManager = new UploadManager(cfg);
+            Auth auth = Auth.create(accessKey, secretKey);
+            String upToken = auth.uploadToken(bucket);
             
-            // 将文件保存到磁盘
-            Files.copy(file.getInputStream(), targetLocation);
-            log.info("文件已保存至: {}", targetLocation.toAbsolutePath());
+            log.info("开始流式上传至七牛云 OSS: {}", newFileName);
+            uploadManager.put(file.getInputStream(), newFileName, upToken, null, null);
+            
+            // 拼接七牛云外网访问地址
+            String videoUrl = domain.endsWith("/") ? domain + newFileName : domain + "/" + newFileName;
+            // 确保有协议头
+            if (!videoUrl.startsWith("http")) {
+                videoUrl = "http://" + videoUrl;
+            }
+            
+            log.info("文件已成功直传至七牛云: {}", videoUrl);
 
             // 构造请求给 Service
             TaskRequest request = new TaskRequest();
             request.setUserId(userId);
-            request.setVideoUrl(targetLocation.toAbsolutePath().toString().replace("\\", "/"));
+            request.setVideoUrl(videoUrl);
 
             return processTaskCreation(request);
 
-        } catch (IOException e) {
-            log.error("保存视频文件失败", e);
-            return ResponseEntity.internalServerError().body(errorResponse("保存视频文件失败: " + e.getMessage()));
+        } catch (Exception e) {
+            log.error("上传视频至七牛云失败", e);
+            return ResponseEntity.internalServerError().body(errorResponse("上传视频失败: " + e.getMessage()));
         }
     }
 
@@ -138,17 +172,12 @@ public class TaskController {
 
         try {
             UUID uuid = UUID.fromString(taskId);
-            TaskEntity task = taskService.getTaskById(uuid);
+            Map<String, Object> response = taskService.getTaskDetails(uuid);
 
-            if (task == null) {
+            if (response == null) {
                 return ResponseEntity.status(404).body(errorResponse("找不到任务 ID: " + taskId));
             }
 
-            Map<String, Object> response = new HashMap<>();
-            response.put("taskId", task.getId().toString());
-            response.put("userId", task.getUserId().toString());
-            response.put("status", task.getStatus());
-            response.put("createdAt", task.getCreatedAt());
             return ResponseEntity.ok(response);
 
         } catch (IllegalArgumentException e) {
@@ -157,6 +186,37 @@ public class TaskController {
         } catch (Exception e) {
             log.error("查询任务状态异常", e);
             return ResponseEntity.internalServerError().body(errorResponse("系统内部错误: " + e.getMessage()));
+        }
+    }
+
+    /**
+     * 根据路径查询静态资源 (例如图片)
+     */
+    @GetMapping("/assets")
+    public ResponseEntity<Resource> getImageAsset(@RequestParam("path") String path) {
+        log.info("请求图片资源: path={}", path);
+        try {
+            Path reqFile = Paths.get(path).normalize().toAbsolutePath();
+            Path storageDirPath = Paths.get(storageDir).normalize().toAbsolutePath();
+            
+            // 安全校验：请求的文件必须位于 storageDir 目录下
+            if (!reqFile.startsWith(storageDirPath)) {
+                 log.warn("拒绝访问越权文件: {}", reqFile);
+                 return ResponseEntity.status(403).build();
+            }
+            
+            Resource resource = new UrlResource(reqFile.toUri());
+            if (resource.exists() || resource.isReadable()) {
+                return ResponseEntity.ok()
+                        .contentType(MediaType.IMAGE_JPEG)
+                        .body(resource);
+            } else {
+                log.warn("文件不存在或不可读: {}", reqFile);
+                return ResponseEntity.notFound().build();
+            }
+        } catch (Exception e) {
+            log.error("读取图片资源失败", e);
+            return ResponseEntity.internalServerError().build();
         }
     }
 

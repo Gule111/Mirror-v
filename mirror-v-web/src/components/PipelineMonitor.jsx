@@ -8,7 +8,7 @@ const STEPS = [
   { id: 'SUCCESS', label: '分析完成', icon: Check }
 ];
 
-export default function PipelineMonitor({ currentStatus }) {
+export default function PipelineMonitor({ currentStatus, onClick }) {
   let activeIndex = 0;
   if (currentStatus === 'PROCESSING') activeIndex = 1; 
   if (currentStatus === 'ANALYZING') activeIndex = 2;  
@@ -17,14 +17,19 @@ export default function PipelineMonitor({ currentStatus }) {
 
   if (!currentStatus) return null; 
 
+  const isClickable = currentStatus === 'SUCCESS' && onClick;
+
   return (
     <motion.div 
       initial={{ opacity: 0, scale: 0.95 }}
       animate={{ opacity: 1, scale: 1 }}
       transition={{ delay: 0.2, type: "spring", stiffness: 200, damping: 25 }}
-      className="w-full max-w-2xl mx-auto mb-24 px-6 relative z-10"
+      className={`w-full max-w-2xl mx-auto mb-24 px-6 relative z-10 ${isClickable ? 'cursor-pointer' : ''}`}
+      onClick={isClickable ? onClick : undefined}
     >
-      <div className="apple-glass rounded-3xl p-6 relative flex flex-col gap-6 shadow-apple">
+      <div className={`apple-glass rounded-3xl p-6 relative flex flex-col gap-6 shadow-apple transition-all duration-300
+        ${isClickable ? 'hover:shadow-[0_20px_50px_rgba(0,113,227,0.15)] hover:scale-[1.02] active:scale-[0.98]' : ''}
+      `}>
         <div className="flex items-center justify-between px-4">
           <span className="text-xs font-semibold text-apple-gray tracking-[0.15em]">
             处理进度

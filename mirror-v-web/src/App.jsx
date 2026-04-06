@@ -46,51 +46,72 @@ export default function App() {
     }
   };
 
+  // 使用函数提取报告数据逻辑，以便复用
+  const fetchReportData = async (tid) => {
+    try {
+      const res = await taskApi.getTaskStatus(tid);
+      if (res.data.status === 'SUCCESS') {
+        let parsedAnalysis = null;
+        if (res.data.analysis) {
+          try {
+            parsedAnalysis = typeof res.data.analysis === 'string' 
+              ? JSON.parse(res.data.analysis) 
+              : res.data.analysis;
+          } catch (e) { console.error("Parse fail:", e); }
+        }
+        setReportData({
+          frames: res.data.frames || [],
+          transcript: res.data.transcript || "未获取到台词文本",
+          analysis: parsedAnalysis
+        });
+        return true;
+      }
+      return false;
+    } catch (err) {
+      console.error('Fetch report error:', err);
+      return false;
+    }
+  };
+
   useEffect(() => {
-    if (!taskId || currentStatus === 'SUCCESS' || currentStatus === 'FAILED') return;
+    if (!taskId || currentStatus === 'FAILED') return;
+    
+    // 如果已经是 SUCCESS，尝试直接加载数据（用于点击重新打开）
+    if (currentStatus === 'SUCCESS' && !reportData) {
+      fetchReportData(taskId);
+      return;
+    }
+
+    if (currentStatus === 'SUCCESS') return;
 
     const intervalId = setInterval(async () => {
-      try {
-        const res = await taskApi.getTaskStatus(taskId);
-        setCurrentStatus(res.data.status);
-        
-        if (res.data.status === 'SUCCESS') {
-          setReportData({
-            frames: [
-              { timestamp: 1.0 }, { timestamp: 2.0 }, { timestamp: 3.5 }
-            ],
-            transcript: res.data.transcript || "这是 AI 生成的结构化内容示例。苹果风格注重排版和间距，这里将展示段落清晰、标点准确的分析结果。"
-          });
-          setTimeout(() => setIsSheetOpen(true), 1200); 
-        }
-      } catch (err) {
-        console.error('Polling error:', err);
+      const isDone = await fetchReportData(taskId);
+      if (isDone) {
+        setCurrentStatus('SUCCESS');
+        setTimeout(() => setIsSheetOpen(true), 1200);
+        clearInterval(intervalId);
+      } else {
+        // 更新中间状态
+        try {
+          const res = await taskApi.getTaskStatus(taskId);
+          if (res.data.status !== currentStatus) {
+            setCurrentStatus(res.data.status);
+          }
+        } catch(e) {}
       }
     }, 2000);
 
     return () => clearInterval(intervalId);
-  }, [taskId, currentStatus]);
+  }, [taskId, currentStatus, reportData]);
 
   return (
     <div className="relative flex flex-col min-h-screen selection:bg-apple-blue/10 overflow-x-hidden">
-      {/* Dynamic Video Background Architecture */}
+      {/* ... (Video Background remains unchanged) ... */}
       <div className="fixed inset-0 pointer-events-none z-0">
-        {/* Layer 1: Raw Video */}
-        <video 
-          autoPlay 
-          loop 
-          muted 
-          playsInline 
-          className="absolute inset-0 w-full h-full object-cover"
-        >
+        <video autoPlay loop muted playsInline className="absolute inset-0 w-full h-full object-cover">
           <source src="/bg.mp4" type="video/mp4" />
         </video>
-        
-        {/* Layer 2: Premium Glassmorphism Overlays */}
-        {/* Subtle top-down gradient for header readability */}
         <div className="absolute inset-0 bg-gradient-to-b from-black/20 via-transparent to-transparent z-[1]" />
-        
-        {/* Main white tint - keeping the video visible but text protected */}
         <div className="absolute inset-0 bg-[#F5F5F7]/65 backdrop-blur-[2px] z-[2]" />
       </div>
 
@@ -108,7 +129,10 @@ export default function App() {
           onRequireLogin={() => setShowLoginModal(true)}
         />
         
-        <PipelineMonitor currentStatus={currentStatus} />
+        <PipelineMonitor 
+          currentStatus={currentStatus} 
+          onClick={currentStatus === 'SUCCESS' ? () => setIsSheetOpen(true) : null}
+        />
       </main>
 
       <footer className="w-full py-12 flex flex-col items-center gap-4 z-10">

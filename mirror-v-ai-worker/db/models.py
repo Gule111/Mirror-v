@@ -266,6 +266,40 @@ def save_video_transcript(task_id: str, content: str, duration: float) -> int:
             release_connection(conn)
 
 
+def save_ai_analysis_report(task_id: str, analysis_result: str) -> int:
+    """
+    保存 Dify AI 的分析报告结果。
+
+    Args:
+        task_id: 任务 UUID
+        analysis_result: AI 分析的 JSON 字符串结果
+
+    Returns:
+        int: 插入记录的行数 (1)
+    """
+    sql = """
+        INSERT INTO ai_analysis_reports (id, task_id, analysis_result)
+        VALUES (%s, %s, %s)
+    """
+    conn = None
+    try:
+        conn = get_connection()
+        with conn.cursor() as cur:
+            cur.execute(sql, (str(uuid.uuid4()), task_id, analysis_result))
+        conn.commit()
+        logger.info("[DB] save_ai_analysis_report — task_id=%s, 成功保存 AI 分析结果", task_id)
+        return 1
+    except psycopg2.Error as e:
+        if conn:
+            conn.rollback()
+        # SQL 异常，不阻断主流程，而是记录日志
+        logger.error("[DB] save_ai_analysis_report 失败 (可能是表不存在或外键冲突) — task_id=%s: %s", task_id, e)
+        return 0
+    finally:
+        if conn:
+            release_connection(conn)
+
+
 def close_pool():
     """
     关闭数据库连接池（优雅停机时调用）。

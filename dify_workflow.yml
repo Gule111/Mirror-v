@@ -1,0 +1,164 @@
+app:
+  description: '用于 Mirror-V 系统的视频内容自动分析工作流，包含大纲拆解、钩子提取和金句挖掘。'
+  icon: 🤖
+  icon_background: '#FFEAD5'
+  mode: workflow
+  name: Mirror-V 视频内容分析
+kind: app
+version: 0.1.5
+workflow:
+  environment_variables: []
+  features:
+    file_upload:
+      image:
+        enabled: false
+        number_limits: 3
+        transfer_methods:
+        - local_file
+        - remote_url
+    retriever_resource:
+      enabled: false
+    sensitive_word_avoidance:
+      enabled: false
+    speech_to_text:
+      enabled: false
+    suggested_questions_after_answer:
+      enabled: false
+    text_to_speech:
+      enabled: false
+  graph:
+    edges:
+    - data:
+        isInIteration: false
+        sourceType: start
+        targetType: llm
+      id: start-llm
+      source: start
+      sourceHandle: source
+      target: llm
+      targetHandle: target
+      type: custom
+    - data:
+        isInIteration: false
+        sourceType: llm
+        targetType: end
+      id: llm-end
+      source: llm
+      sourceHandle: source
+      target: end
+      targetHandle: target
+      type: custom
+    nodes:
+    - data:
+        desc: ''
+        selected: false
+        title: 开始
+        type: start
+        variables:
+        - max_length: 256000
+          options: []
+          required: true
+          type: text
+          variable: content
+        - max_length: 256
+          options: []
+          required: false
+          type: number
+          variable: duration
+      height: 116
+      id: start
+      position:
+        x: 80
+        y: 282
+      positionAbsolute:
+        x: 80
+        y: 282
+      selected: false
+      sourcePosition: right
+      targetPosition: left
+      type: custom
+      width: 244
+    - data:
+        context:
+          enabled: false
+          variable_selector: []
+        desc: ''
+        model:
+          completion_params:
+            temperature: 0.7
+          mode: chat
+          name: gpt-4o-mini
+          provider: openai
+        prompt_template:
+          - role: system
+            text: >-
+              你是一个资深的短视频内容分析专家。
+              你的任务是分析提供的视频语音转录文本，提取以下三个关键信息：
+
+              1. 钩子逻辑 (hook_logic): 视频开头是如何吸引注意力的？(例如：反直觉、痛点共鸣、悬念设置等)。用一段简短的话总结。
+
+              2. 内容结构 (content_structure): 概括视频的核心脉络与结构。返回一个 JSON 数组，每个元素包含 "point" (讲述的核心点) 和 "desc" (简短描述)。
+
+              3. 金句提取 (gold_quotes): 提取视频中最亮眼、最能引发共鸣的句子。返回一个字符串数组。
+
+
+              只输出合法的纯 JSON 字符串！严禁在结果中包含 Markdown 的代码块标识（比如 ```json ）或其他说明文字。请直接输出 `{` 开头的 JSON！
+
+
+              期望的 JSON 结构如下：
+
+              {
+                "hook_logic": "通过抛出反常识的结论制造悬念...",
+                "content_structure": [
+                  {"point": "提出痛点", "desc": "人们通常认为..."},
+                  {"point": "给出解法", "desc": "实际上，我们可以..."}
+                ],
+                "gold_quotes": [
+                  "金句 1",
+                  "金句 2"
+                ]
+              }
+          - role: user
+            text: '转录文本如下：{{#start.content#}}'
+        selected: false
+        title: LLM 内容分析
+        type: llm
+        variables: []
+        vision:
+          enabled: false
+      height: 98
+      id: llm
+      position:
+        x: 384
+        y: 282
+      positionAbsolute:
+        x: 384
+        y: 282
+      selected: true
+      sourcePosition: right
+      targetPosition: left
+      type: custom
+      width: 244
+    - data:
+        desc: ''
+        outputs:
+        - value_selector:
+          - llm
+          - text
+          variable: final_analysis
+        selected: false
+        title: 结束
+        type: end
+      height: 90
+      id: end
+      position:
+        x: 688
+        y: 282
+      positionAbsolute:
+        x: 688
+        y: 282
+      selected: false
+      sourcePosition: right
+      targetPosition: left
+      type: custom
+      width: 244
