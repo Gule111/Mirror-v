@@ -1,81 +1,54 @@
-🛸 Mirror-V: AI-Powered Video Analytics Pipeline
-Mirror-V 是一款工业级的视频内容解析系统。它采用“双引擎”架构：由 Spring Boot 负责业务编排与任务调度，由 Python + OpenCV + Whisper 负责高性能的视频抽帧与语音转录。
+Mirror-v: Multi-modal AI Video Analysis & Diagnostic Platform
+Mirror-v 是一款基于多智能体（Multi-Agent）架构的视频自动化分析与诊断平台。它不仅仅是一个视频处理工具，而是通过 LangGraph 构建了一个具备自我迭代能力的“AI 诊断室”，能够对视频内容进行多维度的深度理解与逻辑推演。
 
-🏗️ 系统架构 (Architecture)
-本系统由四个核心容器组成，通过 Docker 实现环境隔离：
+核心特性 | Key Features
+🤖 多智能体协同编排 (Multi-Agent Orchestration): 采用 Planner-Executor-Reviewer 模型。由 Planner 拆解诊断任务，Executor 调用工具执行分析，Reviewer 进行逻辑校验，未通过则自动触发循环迭代。
 
-Mirror-V Server (Java): 基于 Spring Boot 3.x，提供 RESTful API，负责任务持久化与分发。
+👁️ 多模态感知流水线 (Multi-modal Pipeline): 融合 OpenCV 帧提取、Whisper 语音转译与 LLM 语义理解，实现音视轨的时间戳对齐（Timestamp Alignment）。
 
-Mirror-V Worker (Python): 核心 AI 引擎，负责视频抽帧 (OpenCV) 与语音识别 (Whisper)。
+⚡ 高性能后端架构 (High-Performance Backend): 基于 Spring Boot 3 与 FastAPI 的混合架构，利用 Redis Pipeline 与两级缓存支撑高频数据访问。
 
-Redis: 作为消息中间件，通过 BLPOP 实现任务的异步长轮询。
+🛠️ 工业级工程化实践 (Engineering Excellence): 严格遵循 CI/CD 流程，集成自动化测试与 Docker 容器化部署。
 
-PostgreSQL: 统一的状态存储中心，记录任务全生命周期。
+系统架构 | Architecture
+本项目核心逻辑由 LangGraph 驱动的状态机管理：
 
-🚀 核心特性 (Features)
-异步解耦: 采用生产者-消费者模型，Java 端接单后立即返回，由 Python 端在后台静默处理。
+State Definition: 维护全局 GraphState，记录视频元数据、提取的特征及诊断进度。
 
-状态机追踪: 任务经历 PENDING -> PROCESSING -> SUCCESS/FAILED 完整闭环。
+Conditional Routing: 根据 LLM 输出自动判断跳转分支——是继续提取特征，还是直接生成最终报告。
 
-多模态解析:
+Persistence: 利用 LangGraph Checkpointer 实现长任务的状态持久化。
 
-视觉: 基于 OpenCV 的智能等间隔抽帧。
+技术栈 | Tech Stack
+Language: Java 21, Python 3.10+
 
-听觉: 基于 OpenAI Whisper 的本地化 ASR（语音转文字）处理。
+Frameworks: Spring Boot 3, FastAPI, LangGraph, Dify
 
-高可用设计: Python 端具备 Signal Handler 优雅停机机制，确保在容器重启时不丢失任务进度。
+Infrastructure: Redis Stack, RabbitMQ, PostgreSQL (KingbaseES)
 
-🛠️ 技术栈 (Tech Stack)
-Backend (Java)
-Framework: Spring Boot, Spring Data JPA
+DevOps: Docker, GitHub Actions, Pytest/JUnit5, Nginx
 
-Database: PostgreSQL
+工程化落地 | Engineering Practice
+🔄 CI/CD Pipeline
+本项目集成 GitHub Actions 自动化流水线，确保每一次 Push 或 PR 都能通过严格的质量检查：
 
-Messaging: Redis (Lettuce)
+Linting: 自动执行代码风格扫描（Flake8/Checkstyle）。
 
-AI Worker (Python)
-Vision: OpenCV (cv2)
+Automated Testing: 触发 Pytest 与 JUnit 单元测试，重点覆盖 Agent 的状态转移逻辑。
 
-Audio/ASR: OpenAI Whisper, FFmpeg
+Build & Push: 测试通过后自动构建 Docker 镜像并推送至仓库。
 
-Database Engine: Psycopg2 (Connection Pooling)
+🐳 容器化部署
+提供多阶段构建的 Dockerfile，优化镜像体积，支持一键式容器化快速部署。
 
-📂 项目结构 (Structure)
-Plaintext
-
-mirror-v/
-├── mirror-v-server/          # Java 后端 (API 接口 & 业务逻辑)
-│   ├── src/
-│   └── Dockerfile
-├── mirror-v-ai-worker/       # Python AI 引擎 (抽帧 & 语音识别)
-│   ├── core/                 # 核心处理器 (OpenCV, Whisper)
-│   ├── models.py             # 数据库访问层 (CRUD)
-│   ├── main.py               # 任务监听入口 (Redis Consumer)
-│   └── Dockerfile
-└── docker-compose.yml        # 一键编排脚本
-⚡ 快速启动 (Quick Start)
-1. 环境准备
-确保你的环境中已安装 Docker 和 Docker Compose。
-
-2. 启动基础服务
+快速开始 | Quick Start
 Bash
 
-docker-compose up -d mirror_v_db mirror_v_redis
-3. 运行项目
-分别启动 Java 服务端与 Python Worker：
+# 1. 克隆仓库
+git clone https://github.com/Gule111/Mirror-v.git
 
-Bash
+# 2. 配置环境变量
+cp .env.example .env
 
-# 在 Java 目录
-mvn spring-boot:run
-
-# 在 Python 目录
-python main.py
-🛡️ Harness & Monitoring (监控与质量)
-作为 Harness Engineer，本项目集成了以下监控维度：
-
-性能埋点: 记录 Step 1-4 每一阶段的执行耗时，便于定位 OpenCV 或模型推理瓶颈。
-
-连接池管理: Python 端通过 SimpleConnectionPool 实现线程安全的数据库访问。
-
-单元测试: 提供 models.py 的独立 Mock 测试模块，确保持久层稳固。
+# 3. 启动服务 (Docker Compose 准备中)
+docker-compose up -d
